@@ -211,34 +211,29 @@ export default function PasswordAnalyzer() {
         </div>
         <div className="bg-transparent shadow-none rounded-xl p-0 relative">
           <div className="flex flex-col items-center justify-center w-full relative z-10">
-            <div className="flex justify-end w-full">
-              <button
-                onClick={() => {
-                  setPassword("");
-                  setLocal(null);
-                  setHibpCount(null);
-                  setError(null);
-                  setMutations([]);
-                }}
-                className="text-sm text-cyan-400 hover:text-cyan-200"
-                style={{ position: "relative", overflow: "hidden" }}
-              >
-                <span className="shimmer">Reset</span>
-                <style>{`
-                  .shimmer {
-                    background: linear-gradient(90deg, #e0e7ff 0%, #a5b4fc 50%, #e0e7ff 100%);
-                    background-size: 200% 100%;
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    animation: shimmer 2s infinite linear;
-                  }
-                  @keyframes shimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
-                `}</style>
-              </button>
-            </div>
+            <style>{`
+              .reset-button {
+                background: linear-gradient(45deg, #0ea5e9, #3b82f6);
+                border: 1px solid rgba(14, 165, 233, 0.5);
+                padding: 8px 16px;
+                border-radius: 6px;
+                color: white;
+                font-weight: 500;
+                transition: all 0.3s ease;
+                box-shadow: 0 0 10px rgba(14, 165, 233, 0.3);
+              }
+              .reset-button:hover {
+                background: linear-gradient(45deg, #0284c7, #2563eb);
+                box-shadow: 0 0 15px rgba(14, 165, 233, 0.5);
+                transform: translateY(-1px);
+              }
+              .reset-button:active {
+                transform: translateY(1px);
+                box-shadow: 0 0 5px rgba(14, 165, 233, 0.3);
+              }
+            `}</style>
             <div className="mt-4 w-full flex flex-col items-center">
-              <label className="block text-sm font-medium text-cyan-300 mb-1">Password</label>
-              <div className="flex gap-2 w-full max-w-md">
+              <div className="flex gap-2 w-full max-w-md items-center">
                 <input
                   type={visible ? "text" : "password"}
                   value={password}
@@ -259,13 +254,28 @@ export default function PasswordAnalyzer() {
                 <motion.button
                   onClick={autoPickBestSuggestion}
                   disabled={loading || mutations.length === 0}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60 relative overflow-hidden"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 disabled:opacity-60 relative overflow-hidden whitespace-nowrap flex-shrink-0"
                   title="Auto-Pick Best Suggestion"
                   whileTap={{ scale: 0.97 }}
                   style={{zIndex: 10}}
                 >
-                  <span className="shimmer">{loading ? "Analyzing…" : "Auto-Pick Best Suggestion"}</span>
+                  <span className="shimmer">
+                    {loading ? "Analyzing…" : "Auto-Pick"}
+                  </span>
                 </motion.button>
+                <button
+                  onClick={() => {
+                    setPassword("");
+                    setLocal(null);
+                    setHibpCount(null);
+                    setError(null);
+                    setMutations([]);
+                  }}
+                  className="reset-button"
+                  style={{zIndex: 10}}
+                >
+                  Reset
+                </button>
               </div>
               {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
             </div>
@@ -303,31 +313,24 @@ export default function PasswordAnalyzer() {
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div>
                       <h4 className="font-medium text-cyan-300">Feedback</h4>
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-col gap-2">
                         {/* Requirement chips with ticks/shakes */}
-                        {local.feedback?.suggestions?.length ? (
+                        {local.score === 0 ? (
+                          <div className="text-red-400 font-medium">This password is too short and predictable, making it easy for attackers to guess!<br/>Add length and variety to stay safe.</div>
+                        ) : local.score === 1 ? (
+                          <div className="text-orange-400 font-medium">Using short or common passwords puts your account at high risk!<br/>Avoid predictable patterns like 'abcd' or '1234'.</div>
+                        ) : local.score === 2 ? (
+                          <div className="text-yellow-300 font-medium">Your password has basic strength but needs improvement!<br/>Mix uppercase, lowercase, numbers, and symbols for better security.</div>
+                        ) : local.score === 3 ? (
+                          <div className="text-cyan-300 font-medium">Your password is good, little improvements needed!<br/>A few more characters could make it nearly unbreakable.</div>
+                        ) : local.score === 4 ? (
+                          <div className="text-emerald-400 font-medium">Your password looks solid, keep it up!<br/>Consider using a password manager to keep it safe.</div>
+                        ) : local.feedback?.suggestions?.length ? (
                           local.feedback.suggestions.map((s, i) => (
-                            <motion.div
-                              key={i}
-                              className={clsx("px-3 py-1 rounded-full text-sm font-semibold border flex items-center gap-2", "bg-gray-100", "border-cyan-400")}
-                              initial={{ scale: 1 }}
-                              animate={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95, rotate: -5 }}
-                            >
-                              <span className="text-cyan-700">{s}</span>
-                              <motion.span
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0.2 }}
-                                className="text-green-400"
-                              >✔</motion.span>
-                            </motion.div>
+                            <div key={i} className="text-cyan-200">{s}</div>
                           ))
                         ) : (
-                          <motion.div className="px-3 py-1 rounded-full text-sm font-semibold border bg-green-100 border-green-300 flex items-center gap-2" initial={{ scale: 0.9 }} animate={{ scale: 1.05 }}>
-                            <span className="text-green-700">All requirements met!</span>
-                            <span className="text-green-500">✔</span>
-                          </motion.div>
+                          <div className="text-emerald-400 font-medium">Your password looks solid, keep it up!</div>
                         )}
                       </div>
                       {local.crackTimes && (
@@ -371,7 +374,7 @@ export default function PasswordAnalyzer() {
                           <strong>Detected patterns:</strong>
                           <div className="mt-2">
                             {local.patterns.length === 0 ? (
-                              <span className="text-gray-500 text-sm">No obvious simple patterns</span>
+                              <span className="text-gray-500 text-sm">Mixed patterns</span>
                             ) : (
                               local.patterns.map((p, i) => (
                                 <div key={i} className="text-sm text-cyan-300">

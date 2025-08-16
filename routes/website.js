@@ -2,33 +2,34 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const sslChecker = require('ssl-checker');  // Import ssl-checker for SSL/TLS details
-
+const sslChecker = require('ssl-checker'); // ssl-checker expects a hostname
 // Google Safe Browsing API key from environment variables
-const googleSafeBrowsingApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY;  // Google Safe Browsing key
+const googleSafeBrowsingApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY || null;
 
-// Helper: normalize header names to lowercase keys
-function normalizeHeaders(rawHeaders) {
-  const h = {};
-  for (const key of Object.keys(rawHeaders || {})) {
-    h[key.toLowerCase()] = rawHeaders[key];
+// Helper: normalize header names to lowercase keys (use response.headers as source of truth)
+function normalizeHeaders(rawHeaders = {}) {
+  const out = {};
+  for (const [k, v] of Object.entries(rawHeaders)) {
+    out[k.toLowerCase()] = v;
   }
-  return h;
+  return out;
 }
 
-// Simple checks and friendly messages
-function analyzeHeaders(headers, url) {
+// Analyze headers and produce friendly advice
+function analyzeHeaders(headersMap, isHttps) {
   const results = {};
-  results.https = url.startsWith('https');
-  results.server = headers['server'] || null;
-  results.content_security_policy = headers['content-security-policy'] || null;
-  results.hsts = headers['strict-transport-security'] || null;
-  results.x_frame_options = headers['x-frame-options'] || null;
-  results.x_content_type_options = headers['x-content-type-options'] || null;
-  results.referrer_policy = headers['referrer-policy'] || null;
-  results.cors = headers['access-control-allow-origin'] || null;
+  results.https = !!isHttps;
+  results.server = headersMap['server'] || null;
 
-  // Friendly advice list
+  // prefer CSP and report-only form
+  results.content_security_policy = headersMap['content-security-policy'] || headersMap['content-security-policy-report-only'] || null;
+  results.hsts = headersMap['strict-transport-security'] || null;
+  results.x_frame_options = headersMap['x-frame-options'] || null;
+  results.x_content_type_options = headersMap['x-content-type-options'] || null;
+  results.referrer_policy = headersMap['referrer-policy'] || null;
+  results.cors = headersMap['access-control-allow-origin'] || null;
+
+  // Advice  
   const advice = [];
   if (!results.https) {
     advice.push('Site is not using HTTPS — use TLS (HTTPS) to secure data in transit.');
@@ -45,110 +46,153 @@ function analyzeHeaders(headers, url) {
   return { results, advice };
 }
 
+// Ensure a string looks like a URL or throw
+function ensureFullUrl(input) {
+  // If input already has protocol, return as-is; otherwise try https then http
+  try {
+    // If parse succeeds, return normalized URL
+    const u = new URL(input);
+    return u.toString();
+  } catch {
+    // no protocol provided, try https
+    try {
+      const u = new URL('https://' + input);
+      return u.toString();
+    } catch {
+      // fall back to http
+      const u = new URL('http://' + input);
+      return u.toString();
+    }
+  }
+}
+
 router.post('/scan', async (req, res) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
-      console.error('Invalid URL received:', url);  // Log invalid URL
+      console.error('Invalid URL received:', url);
       return res.status(400).json({ error: 'URL required (e.g. https://example.com)' });
     }
 
-    // Normalize URL
-    let target = url.trim();
-
-    // Remove the protocol (http:// or https://) from the URL for DNS lookup
-    if (/^https?:\/\//i.test(target)) {
-      target = target.replace(/^https?:\/\//, '');  // Remove 'http://' or 'https://'
+    // Normalize & construct a full URL (always try HTTPS first)
+    let requestedFullUrl;
+    try {
+      requestedFullUrl = ensureFullUrl(url.trim());
+    } catch (e) {
+      console.error('Invalid URL after normalization:', url, e.message);
+      return res.status(400).json({ error: 'Invalid URL' });
     }
 
-    console.log('Scanning URL:', target);  // Log the URL being scanned
+    console.log('Scanning URL (requested):', requestedFullUrl);
 
-    // Step 1: Try to GET the page (to read headers)
+    // Perform the GET to fetch headers (follow redirects)
     let response;
     try {
-      response = await axios.get('https://' + target, {  // Re-append https:// to make the request
-        timeout: 30000,  // Increased timeout to 30 seconds (30000ms)
+      response = await axios.get(requestedFullUrl, {
+        timeout: 30000,
         maxRedirects: 5,
-        validateStatus: () => true,  // Accept all status codes
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CybersuiteBot/1.0)' }  // Set User-Agent to avoid blocks
+        validateStatus: () => true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CybersuiteBot/1.0)' }
       });
-      console.log('Response received for URL:', target);  // Log response success
+      console.log('Fetch complete for', requestedFullUrl, 'status', response.status);
     } catch (err) {
-      console.error('Error during fetch:', err.message);  // Log fetch error
-      console.error('Error details:', err);  // Log the full error details
-      return res.status(502).json({ ok: false, error: 'fetch_failed', message: err.message });
+      console.error('Error during fetch:', err && err.message ? err.message : err);
+      return res.status(502).json({ ok: false, error: 'fetch_failed', message: String(err && err.message ? err.message : err) });
     }
 
-    const headers = normalizeHeaders(response.headers);
-    const analyzed = analyzeHeaders(headers, target);
+    // Determine final URL (after redirects). Prefer axios final URL if available
+    const finalUrlRaw = (response.request && response.request.res && response.request.res.responseUrl)
+      || (response.config && response.config.url)
+      || requestedFullUrl;
 
-    // Step 2: Fetch SSL/TLS information using ssl-checker
-    let sslInfo;
+    let finalUrl;
     try {
-      sslInfo = await sslChecker(target);  // SSL check still uses the domain name
-      console.log('SSL Info:', sslInfo);  // Log SSL info
-    } catch (err) {
-      console.error('Error during SSL check:', err.message);  // Log SSL check error
-      return res.status(502).json({ ok: false, error: 'ssl_check_failed', message: err.message });
+      finalUrl = new URL(finalUrlRaw).toString();
+    } catch {
+      // fallback to requestedFullUrl if parsing finalUrlRaw fails
+      finalUrl = requestedFullUrl;
     }
 
-    // Google Safe Browsing Reputation Check
-    let reputation = 'unknown';
-
+    // isHttps: rely on finalUrl's protocol (most robust)
+    let isHttps = false;
     try {
-      const safeBrowsingPayload = {
-        client: {
-          clientId: 'cybersuite',
-          clientVersion: '1.0'
-        },
-        threatInfo: {
-          threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING'],
-          platformTypes: ['ANY_PLATFORM'],
-          threatEntryTypes: ['URL'], // ✅ MUST include this
-          threatEntries: [
-            { url: target } // ✅ This should be inside an array, not a single object
-          ]
-        }
-      };
+      isHttps = new URL(finalUrl).protocol === 'https:';
+    } catch {
+      isHttps = finalUrl.toLowerCase().startsWith('https://');
+    }
 
-      const safeBrowsingResponse = await axios.post(
-        `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${googleSafeBrowsingApiKey}`,
-        safeBrowsingPayload,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+    // Normalize headers from axios response.headers (source of truth); keys lowercased
+    const headers = normalizeHeaders(response.headers || {});
 
-      // ✅ If matches returned, it's unsafe
-      if (safeBrowsingResponse.data && safeBrowsingResponse.data.matches) {
-        reputation = 'malicious';
-      } else {
-        reputation = 'safe';
+    // Analyze headers
+    const analyzed = analyzeHeaders(headers, isHttps);
+
+    // SSL/TLS info: use hostname from final URL for ssl-checker (not full URL)
+    const hostnameForSsl = (() => {
+      try {
+        return new URL(finalUrl).hostname;
+      } catch {
+        // try from requestedFullUrl
+        return new URL(requestedFullUrl).hostname;
       }
+    })();
 
+    let sslInfo = null;
+    try {
+      // ssl-checker accepts a hostname like 'example.com'
+      // If ssl-checker throws, we continue but mark ssl as null
+      sslInfo = await sslChecker(hostnameForSsl);
+      console.log('SSL Info for', hostnameForSsl, sslInfo && sslInfo.valid ? 'valid' : 'invalid/unknown');
     } catch (err) {
-      console.error('Error during reputation check:', err.message);
-      return res.status(502).json({
-        ok: false,
-        error: 'reputation_check_failed',
-        message: err.message
-      });
+      console.error('sslChecker error for', hostnameForSsl, err && err.message ? err.message : err);
+      sslInfo = null; // continue - don't abort the whole scan
     }
 
-    // Optional: Basic TLS/SSL quick info using headers and protocol
+    // Google Safe Browsing: only if API key available; use finalUrl (full) for threat entry
+    let reputation = 'unknown';
+    if (googleSafeBrowsingApiKey) {
+      try {
+        const safeBrowsingPayload = {
+          client: { clientId: 'cybersuite', clientVersion: '1.0' },
+          threatInfo: {
+            threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'],
+            platformTypes: ['ANY_PLATFORM'],
+            threatEntryTypes: ['URL'],
+            threatEntries: [{ url: finalUrl }]
+          }
+        };
+
+        const safeRes = await axios.post(
+          `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${googleSafeBrowsingApiKey}`,
+          safeBrowsingPayload,
+          { headers: { 'Content-Type': 'application/json' }, timeout: 8000 }
+        );
+
+        if (safeRes.data && safeRes.data.matches) {
+          reputation = 'malicious';
+        } else {
+          reputation = 'safe';
+        }
+      } catch (err) {
+        console.error('Safe Browsing check failed, continuing scan:', err && err.message ? err.message : err);
+        reputation = 'unknown';
+      }
+    } else {
+      reputation = 'unknown';
+    }
+
+    // Quick info
     const quick = {
       status_code: response.status,
-      final_url: response.request ? (response.request.res && response.request.res.responseUrl) || target : target
+      final_url: finalUrl
     };
 
-    // Send response with SSL details, headers analysis, and reputation info
+    // Prepare final headers summary booleans and values you previously used
     res.json({
       ok: true,
       quick,
-      ssl: sslInfo,  // Include SSL details
-      reputation,  // Website reputation info from Google Safe Browsing
+      ssl: sslInfo,
+      reputation,
       headers: {
         server: analyzed.results.server,
         https: analyzed.results.https,
@@ -163,8 +207,8 @@ router.post('/scan', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Website scan error', err);  // Log general errors
-    res.status(500).json({ ok: false, error: 'internal_error', message: err.message });
+    console.error('Website scan error', err && err.message ? err.message : err);
+    res.status(500).json({ ok: false, error: 'internal_error', message: String(err && err.message ? err.message : err) });
   }
 });
 
