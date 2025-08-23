@@ -1,0 +1,75 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node.js dependencies
+node_modules/
+
+# Build output folders
+dist/
+dist-ssr/
+build/
+
+# Local environment config files
+*.local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vite cache
+node_modules/.vite/
+
+# Package lock files (optional, ignore if you want)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+*.tmp
+*.temp
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Compiled binary addons
+build/Release
+
+# Debug and test files
+output.log
+
+# Miscellaneous
+.vite/
+
+# Generated PDFs or reports
+*.pdf
