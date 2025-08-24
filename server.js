@@ -15,8 +15,8 @@ app.use(cors({
   origin: [
     'http://localhost:5174',
     'http://localhost:5173',
-    process.env.FRONTEND_URL || '*',
-    'https://cyber-suite.vercel.app'
+    'https://cyber-suite-all-in-one-cybersecurit.vercel.app',
+    process.env.FRONTEND_URL || '*'
   ],
   credentials: true
 }));
