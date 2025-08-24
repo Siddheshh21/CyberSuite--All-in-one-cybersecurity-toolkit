@@ -105,9 +105,7 @@ export default function PasswordAnalyzer() {
       try {
         // First analyze locally
         const patterns = detectPatterns(newPassword);
-        const response = await fetch('/api/password/analyze', {
-          credentials: 'include',
-          mode: 'cors',
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/password/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: newPassword })
