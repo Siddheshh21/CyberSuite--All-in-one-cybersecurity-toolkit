@@ -41,24 +41,24 @@ export default function BreachChecker(){
       }
     }
   return (
-    <div className="min-h-screen p-6 bg-gray-900 relative">
+    <div className="min-h-screen p-4 sm:p-6 bg-gray-900 relative">
       <CyberBackground found={result?.found} />
-      <div className="max-w-5xl mx-auto relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="max-w-5xl mx-auto relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
         <div>
           {/* Home link at top left with reduced top margin */}
-          <div className="flex items-center mb-2 mt-0">
-            <Link to="/" className="flex items-center gap-2 text-xl font-bold text-indigo-400 hover:text-indigo-500">
+          <div className="flex items-center justify-center sm:justify-start mb-2 mt-0">
+            <Link to="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-indigo-400 hover:text-indigo-500">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-7 h-7">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M4 10v10a1 1 0 001 1h5m4-11v11a1 1 0 001 1h5a1 1 0 001-1V10" />
               </svg>
               Home
             </Link>
           </div>
-          <div className="mb-6">
-            <h2 className="text-3xl font-bold text-gray-100">Email Breach Checker</h2>
+          <div className="mb-6 text-center sm:text-left">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-100">Email Breach Checker</h2>
             <p className="text-sm text-gray-300 mt-1">Scan your email across known breaches and get step-by-step remediation.</p>
           </div>
-          <div className="relative rounded-xl p-6 cyber-outer-box">
+          <div className="relative rounded-xl p-4 sm:p-6 cyber-outer-box">
             <EmailInput onSubmit={handleCheck} loading={loading} />
             {error && <div className="mt-4 p-3 rounded bg-red-100 text-red-700">{error}</div>}
             <MicroInteractions loading={loading} found={result?.found} />
@@ -66,7 +66,7 @@ export default function BreachChecker(){
               <div className="mt-6 space-y-6">
                 {/* Status card at top */}
                 {result.found ? (
-                  <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50 flex items-center justify-between animate-pulse">
+                  <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-pulse">
                     <div>
                       <h3 className="text-lg font-bold text-red-800">Warning — your email has been breached!</h3>
                       <div className="text-sm text-gray-700 mt-1">Email: <span className="font-semibold">{result.email}</span></div>
@@ -78,7 +78,7 @@ export default function BreachChecker(){
                     </div>
                   </div>
                 ) : (
-                  <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center justify-between animate-pulse">
+                  <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-pulse">
                     <div>
                       <h3 className="text-lg font-bold text-emerald-800">Good news — no breaches found!</h3>
                       <div className="text-sm text-gray-700 mt-1">Email: <span className="font-semibold">{result.email}</span></div>
@@ -109,8 +109,8 @@ export default function BreachChecker(){
             `}</style>
           </div>
         </div>
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-8 mt-32">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          <div className="flex flex-col gap-6 sm:gap-8 mt-8 sm:mt-32">
             <SecurityFactsCarousel />
             <BreachStatsCard />
             <HackerUsesPanel />

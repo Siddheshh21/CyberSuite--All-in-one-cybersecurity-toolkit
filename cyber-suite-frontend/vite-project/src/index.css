@@ -4,22 +4,32 @@
 
 @layer utilities {
   .animate-fadeIn {
-    animation: fadeIn 1s ease-in forwards;
+    animation: fadeIn 0.5s ease-out forwards;
+    will-change: transform, opacity;
   }
 
   .animate-glow {
-    animation: glow 2s ease-in-out infinite;
+    animation: glow 3s ease-in-out infinite;
+    will-change: filter;
+    @media (max-width: 768px) {
+      animation: none;
+      filter: brightness(110%) drop-shadow(0 0 10px rgba(0, 255, 255, 0.4));
+    }
   }
 
   .animate-pulse-slow {
-    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    animation: pulse 3s ease-in-out infinite;
+    will-change: opacity;
+    @media (max-width: 768px) {
+      animation-duration: 4s;
+    }
   }
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -32,7 +42,7 @@
     filter: brightness(100%) drop-shadow(0 0 5px rgba(0, 255, 255, 0.3));
   }
   50% {
-    filter: brightness(120%) drop-shadow(0 0 20px rgba(0, 255, 255, 0.6));
+    filter: brightness(115%) drop-shadow(0 0 15px rgba(0, 255, 255, 0.5));
   }
 }
 
@@ -51,12 +61,18 @@
 
 .loader-dots > div {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin: 0 3px;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
   background: currentColor;
   border-radius: 9999px;
-  animation: dot 1s infinite ease-in-out;
+  animation: dot 1.2s infinite ease-in-out;
+  will-change: transform, opacity;
+  @media (max-width: 768px) {
+    width: 4px;
+    height: 4px;
+    margin: 0 1px;
+  }
 }
 
 .loader-dots > div:nth-child(2) {

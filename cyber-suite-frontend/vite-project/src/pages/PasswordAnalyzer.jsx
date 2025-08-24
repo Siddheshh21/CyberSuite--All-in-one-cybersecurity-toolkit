@@ -133,7 +133,7 @@ export default function PasswordAnalyzer() {
   }
 
   return (
-    <div className="min-h-screen p-6 relative overflow-hidden bg-[#0a0f1c]">
+    <div className="min-h-screen p-4 sm:p-6 relative overflow-hidden bg-[#0a0f1c]">
       <style>{`
         .hacker-result-box {
           background: linear-gradient(120deg, rgba(10,15,28,0.95) 0%, rgba(10,15,28,0.98) 60%, rgba(0,250,255,0.18) 100%);
@@ -203,8 +203,8 @@ export default function PasswordAnalyzer() {
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-3xl font-bold text-cyan-300 drop-shadow-lg">Password Analyzer</h2>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-cyan-300 drop-shadow-lg">Password Analyzer</h2>
           <Link to="/" className="text-sm text-indigo-400 hover:underline">← Home</Link>
         </div>
         <div className="bg-transparent shadow-none rounded-xl p-0 relative">
@@ -231,13 +231,13 @@ export default function PasswordAnalyzer() {
               }
             `}</style>
             <div className="mt-4 w-full flex flex-col items-center">
-              <div className="flex gap-2 w-full max-w-md items-center">
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-md items-center">
                 <input
                   type={visible ? "text" : "password"}
                   value={password}
                   onChange={e => handlePasswordChange(e.target.value)}
                   placeholder="Type password to analyze"
-                  className="w-[380px] min-w-[270px] max-w-full border border-cyan-500 bg-gray-900 text-cyan-200 rounded px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400 shadow-lg placeholder:text-cyan-300 text-base"
+                  className="w-full sm:w-[380px] min-w-[270px] max-w-full border border-cyan-500 bg-gray-900 text-cyan-200 rounded px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400 shadow-lg placeholder:text-cyan-300 text-base"
                   aria-label="Password"
                   style={{zIndex: 10, background: 'rgba(15,23,42,0.95)', letterSpacing: '0.02em'}}
                 />
@@ -308,7 +308,7 @@ export default function PasswordAnalyzer() {
                       />
                     </motion.div>
                   </div>
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="mt-4 grid gap-4 grid-cols-1 md:grid-cols-2">
                     <div>
                       <h4 className="font-medium text-cyan-300">Feedback</h4>
                       <div className="mt-2 flex flex-col gap-2">
@@ -387,7 +387,7 @@ export default function PasswordAnalyzer() {
                   </div>
                   <div className="mt-4">
                     <strong className="text-cyan-300">Multiple Suggestions</strong>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2 justify-center sm:justify-start">
                       {mutations.length === 0 ? (
                         <div className="text-gray-500 text-sm">No suggestions</div>
                       ) : (
@@ -395,7 +395,7 @@ export default function PasswordAnalyzer() {
                           <button
                             key={i}
                             onClick={() => applySuggestion(m)}
-                            className="px-3 py-1 border border-cyan-400 rounded text-sm hover:bg-cyan-900 text-cyan-200 bg-gray-900"
+                            className="px-3 py-1 border border-cyan-400 rounded text-sm hover:bg-cyan-900 text-cyan-200 bg-gray-900 text-center w-full sm:w-auto"
                           >
                             {m}
                           </button>
