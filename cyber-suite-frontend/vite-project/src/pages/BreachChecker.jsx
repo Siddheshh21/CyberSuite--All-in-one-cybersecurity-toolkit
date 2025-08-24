@@ -71,7 +71,7 @@ export default function BreachChecker(){
                       <h3 className="text-lg font-bold text-red-800">Warning — your email has been breached!</h3>
                       <div className="text-sm text-gray-700 mt-1">Email: <span className="font-semibold">{result.email}</span></div>
                       <div className="text-xs text-gray-600 mt-2">~sources: <a href="https://haveibeenpwned.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">HaveIBeenPwned</a>, <a href="https://xposedornot.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">XposedOrNot</a></div>
-                      <div className="text-xs text-gray-600 mt-1 font-medium">Check the above websites to know when and where your data was breached!!</div>
+                      <div className="text-xs text-gray-600 mt-1 font-bold">Check the above websites to know when and where your data was breached!!</div>
                     </div>
                     <div>
                       <div className="px-3 py-1 rounded bg-red-600 text-white font-semibold text-base">Unsafe</div>
