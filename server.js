@@ -12,7 +12,12 @@ const app = express();
 
 // --- Middleware ---
 app.use(cors({
-  origin: ['http://localhost:5174', 'http://localhost:5173', process.env.FRONTEND_URL || '*'],
+  origin: [
+    'http://localhost:5174',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL || '*',
+    'https://cyber-suite.vercel.app'
+  ],
   credentials: true
 }));
 app.use(bodyParser.json()); // Parse JSON request bodies
