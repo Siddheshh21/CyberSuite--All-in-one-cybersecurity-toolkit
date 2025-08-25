@@ -6,6 +6,7 @@ export async function checkPasswordStrength(password) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
+    credentials: 'same-origin'
   });
 
   if (!res.ok) throw new Error("Failed to analyze password");

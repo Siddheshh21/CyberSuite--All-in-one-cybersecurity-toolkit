@@ -108,7 +108,8 @@ export default function PasswordAnalyzer() {
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app"}/api/password/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: newPassword })
+          body: JSON.stringify({ password: newPassword }),
+          credentials: 'same-origin'
         });
 
         if (!response.ok) throw new Error('Analysis failed');
