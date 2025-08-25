@@ -1,8 +1,8 @@
 // src/services/api.js
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app";
 
 export async function checkPasswordStrength(password) {
-  const res = await fetch(`${API_BASE_URL}/password-strength`, {
+  const res = await fetch(`${API_BASE_URL}/api/password/strength`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),

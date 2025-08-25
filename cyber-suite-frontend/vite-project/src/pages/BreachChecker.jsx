@@ -20,7 +20,7 @@ export default function BreachChecker(){
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app";
     async function handleCheck(email){
       setLoading(true);
       setError(null);

@@ -1,0 +1,6 @@
+Add specific frontend URL to CORS configuration
+
+- Added 'https://cyber-suite-all-in-one-cybersecurit.vercel.app' to the explicit list of allowed origins
+- Created test script to verify CORS configuration with the specific frontend URL
+
+This ensures that the frontend at https://cyber-suite-all-in-one-cybersecurit.vercel.app/ can successfully connect to the backend API.

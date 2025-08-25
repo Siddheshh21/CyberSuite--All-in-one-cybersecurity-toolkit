@@ -1,0 +1,8 @@
+Fix CORS configuration for Vercel deployment URLs
+
+- Updated CORS configuration to use a dynamic function that allows all Vercel deployment URLs
+- Added pattern matching for .vercel.app domains and URLs containing 'cyber-suite' or 'cybersuite'
+- Added logging for rejected origins to help with debugging
+- Created test script to verify CORS configuration with the specific Vercel deployment URL
+
+This fix addresses the 'Failed to fetch' errors appearing in the Email Breach Checker, Vulnerability Scanner, and Password Analyzer components.
