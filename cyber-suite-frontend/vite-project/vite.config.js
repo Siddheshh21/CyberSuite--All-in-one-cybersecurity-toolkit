@@ -30,7 +30,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'https://cyber-suite-backend.onrender.com',
+        target: 'https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app',
         changeOrigin: true,
         secure: true
       }
