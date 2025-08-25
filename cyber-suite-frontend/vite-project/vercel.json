@@ -8,7 +8,7 @@
   "installCommand": "npm install",
   "headers": [
     {
-      "source": "/src/(.*)\.css",
+      "source": "/src/(.*)\\.css",
       "headers": [
         {
           "key": "Content-Type",
