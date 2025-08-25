@@ -11,17 +11,39 @@ const bodyParser = require('body-parser');
 const app = express();
 
 // --- Middleware ---
+// More flexible CORS configuration to handle all Vercel deployment URLs
 app.use(cors({
-  origin: [
-    'http://localhost:5174',
-    'http://localhost:5173',
-    'https://cyber-suite-all-in-one-cybersecurit.vercel.app',
-    'https://cyber-suite-frontend.vercel.app',
-    'https://cybersuite-frontend.vercel.app',
-    'https://cyber-suite.vercel.app',
-    'https://cybersuite.vercel.app',
-    process.env.FRONTEND_URL || '*'
-  ],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      'http://localhost:5174',
+      'http://localhost:5173'
+    ];
+    
+    // Check if the origin is in the allowed list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    
+    // Allow all Vercel deployment URLs
+    if (origin.match(/https:\/\/.*\.vercel\.app$/) ||
+        origin.includes('cyber-suite') ||
+        origin.includes('cybersuite')) {
+      return callback(null, true);
+    }
+    
+    // Allow the frontend URL from environment variable
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      return callback(null, true);
+    }
+    
+    // Log rejected origins for debugging
+    console.log('Rejected Origin:', origin);
+    callback(null, false);
+  },
   credentials: true
 }));
 app.use(bodyParser.json()); // Parse JSON request bodies
@@ -43,7 +65,11 @@ app.get('/api/password/test', (req, res) => {
 });
 
 // --- Basic health check ---
-app.get('/', (req, res) => res.send('Cyber Suite backend running'));
+app.get('/', (req, res) => {
+  // Log the origin of the request for debugging
+  console.log('Request origin:', req.headers.origin);
+  res.send('Cyber Suite backend running');
+});
 
 // --- Start server ---
 const PORT = process.env.PORT || 5000;
