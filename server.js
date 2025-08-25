@@ -15,6 +15,7 @@ const app = express();
 app.use(cors({
   origin: [
     'https://cyber-suite-all-in-one-cybersecurit.vercel.app',
+    'https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app',
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:3000',
@@ -22,7 +23,7 @@ app.use(cors({
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  credentials: false,  // Set to false for public API
+  credentials: true,  // Set to true to allow credentials
   maxAge: 86400  // Cache preflight request for 24 hours
 }));
 

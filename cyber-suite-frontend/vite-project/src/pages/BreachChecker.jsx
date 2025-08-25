@@ -30,6 +30,7 @@ export default function BreachChecker(){
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
+          credentials: 'include'
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || json.detail || "Failed to check email");

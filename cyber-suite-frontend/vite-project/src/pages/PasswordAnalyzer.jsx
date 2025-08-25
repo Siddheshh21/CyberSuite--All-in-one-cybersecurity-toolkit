@@ -109,7 +109,7 @@ export default function PasswordAnalyzer() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: newPassword }),
-          credentials: 'same-origin'
+          credentials: 'include'
         });
 
         if (!response.ok) throw new Error('Analysis failed');
