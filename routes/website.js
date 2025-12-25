@@ -2,67 +2,42 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const sslChecker = require('ssl-checker'); // ssl-checker expects a hostname
-// Google Safe Browsing API key from environment variables
+const sslChecker = require('ssl-checker');
+const { analyzeHeaders } = require('../utils/headerAnalyzer');
+const { analyzeTLS } = require('../utils/tlsAnalyzer');
+const { normalizeWebsiteEntry } = require('../utils/websiteNormalizer');
+const { calculateRiskScore } = require('../utils/riskScorer');
 const googleSafeBrowsingApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY || null;
 
-// Helper: normalize header names to lowercase keys (use response.headers as source of truth)
-function normalizeHeaders(rawHeaders = {}) {
-  const out = {};
-  for (const [k, v] of Object.entries(rawHeaders)) {
-    out[k.toLowerCase()] = v;
-  }
-  return out;
-}
+/*
+Token definitions (used consistently throughout the codebase):
 
-// Analyze headers and produce friendly advice
-function analyzeHeaders(headersMap, isHttps) {
-  const results = {};
-  results.https = !!isHttps;
-  results.server = headersMap['server'] || null;
+  present     - header seen in response
+  not_detected- header not seen in this response (informational absence)
+  missing     - header expected but not returned (only counted for risk when exploitable)
+  exposed     - sensitive information revealed (always increases risk)
 
-  // prefer CSP and report-only form
-  results.content_security_policy = headersMap['content-security-policy'] || headersMap['content-security-policy-report-only'] || null;
-  results.hsts = headersMap['strict-transport-security'] || null;
-  results.x_frame_options = headersMap['x-frame-options'] || null;
-  results.x_content_type_options = headersMap['x-content-type-options'] || null;
-  results.referrer_policy = headersMap['referrer-policy'] || null;
-  results.cors = headersMap['access-control-allow-origin'] || null;
+Only `exposed` and select `missing` states should ever affect risk scoring.
+Other tokens are informational and should NOT change the computed risk level.
+*/
 
-  // Advice  
-  const advice = [];
-  if (!results.https) {
-    advice.push('Site is not using HTTPS — use TLS (HTTPS) to secure data in transit.');
-  } else {
-    if (!results.hsts) advice.push('HSTS header missing — consider enabling Strict-Transport-Security.');
-  }
-  if (!results.content_security_policy) advice.push('CSP missing — add Content-Security-Policy to reduce XSS risk.');
-  if (!results.x_frame_options) advice.push('X-Frame-Options missing — consider adding to prevent clickjacking.');
-  if (!results.x_content_type_options) advice.push('X-Content-Type-Options missing — add to prevent MIME sniffing.');
-  if (results.server) {
-    advice.push(`Server header present (${results.server}) — exposing server software may aid attackers; hide if possible.`);
-  }
+// Normalize header names to lowercase
 
-  return { results, advice };
-}
 
-// Ensure a string looks like a URL or throw
-function ensureFullUrl(input) {
-  // If input already has protocol, return as-is; otherwise try https then http
+// Classify headers by severity and context
+
+
+// Normalize URL with HTTPS preference
+function normalizeUrl(input) {
   try {
-    // If parse succeeds, return normalized URL
-    const u = new URL(input);
-    return u.toString();
-  } catch {
-    // no protocol provided, try https
-    try {
-      const u = new URL('https://' + input);
-      return u.toString();
-    } catch {
-      // fall back to http
-      const u = new URL('http://' + input);
-      return u.toString();
-    }
+    const normalized = normalizeWebsiteEntry(input);
+    return {
+      original_url: input,
+      final_url: normalized.normalized_url,
+      protocol_used: normalized.protocol
+    };
+  } catch (error) {
+    throw new Error(`Invalid URL: ${error.message}`);
   }
 }
 
@@ -70,50 +45,132 @@ router.post('/scan', async (req, res) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
-      console.error('Invalid URL received:', url);
-      return res.status(400).json({ error: 'URL required (e.g. https://example.com)' });
+      return res.status(400).json({ error: 'URL required' });
     }
 
-    // Normalize & construct a full URL (always try HTTPS first)
-    let requestedFullUrl;
+    // Initialize scan status tracking
+    let scanStatus = 'complete';
+    let scanLimitReason = null;
+    // activeProtection is set only from GET-time signals. HEAD failures are recorded
+    // separately as headProtection so a subsequent successful GET can clear it.
+    let activeProtection = false;
+    let headProtection = false;
+
+    // Step 0: Normalize URL
+    let urlInfo;
     try {
-      requestedFullUrl = ensureFullUrl(url.trim());
+      urlInfo = normalizeUrl(url.trim());
     } catch (e) {
-      console.error('Invalid URL after normalization:', url, e.message);
-      return res.status(400).json({ error: 'Invalid URL' });
+      return res.status(400).json({ error: 'Invalid URL', details: e.message });
     }
 
-    console.log('Scanning URL (requested):', requestedFullUrl);
+    console.log(`[Website Scan] Original: ${urlInfo.original_url}, Normalized: ${urlInfo.final_url}`);
 
-    // Perform the GET to fetch headers (follow redirects)
-    let response;
+    // Step 1: HEAD request to capture redirects
+    let redirectChain = [];
     try {
-      response = await axios.get(requestedFullUrl, {
-        timeout: 30000,
-        maxRedirects: 5,
+      await axios.head(urlInfo.final_url, {
+        timeout: 15000,
+        maxRedirects: 10,
         validateStatus: () => true,
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CybersuiteBot/1.0)' }
       });
-      console.log('Fetch complete for', requestedFullUrl, 'status', response.status);
     } catch (err) {
-      console.error('Error during fetch:', err && err.message ? err.message : err);
-      return res.status(502).json({ ok: false, error: 'fetch_failed', message: String(err && err.message ? err.message : err) });
+      console.error('HEAD request info:', err.message);
+      // HEAD failure could indicate protection, but we should not treat this
+      // as definitive protection until GET shows the same behavior. Record
+      // it in `headProtection` so GET can decide.
+      // NOTE: Do NOT treat timeout (ECONNABORTED) as protection—only explicit rejections.
+      if (err.code === 'ECONNRESET' || err.message.includes('socket hang up')) {
+        headProtection = true;
+        console.log('[Website Scan] HEAD request failed; marking headProtection=true', err.code || err.message);
+      }
     }
 
-    // Determine final URL (after redirects). Prefer axios final URL if available
-    const finalUrlRaw = (response.request && response.request.res && response.request.res.responseUrl)
-      || (response.config && response.config.url)
-      || requestedFullUrl;
-
-    let finalUrl;
+    // Step 2: GET request to final URL (this is source of truth)
+    let finalUrl = urlInfo.final_url;
+    let response;
     try {
-      finalUrl = new URL(finalUrlRaw).toString();
-    } catch {
-      // fallback to requestedFullUrl if parsing finalUrlRaw fails
-      finalUrl = requestedFullUrl;
+      response = await axios.get(urlInfo.final_url, {
+        timeout: 45000,
+        maxRedirects: 10,
+        validateStatus: () => true,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CybersuiteBot/1.0)' }
+      });
+
+      // Check for 403 immediately after TLS (strong protection signal)
+      if (response.status === 403) {
+        activeProtection = true;
+        scanStatus = 'limited';
+        scanLimitReason = 'Target actively blocks automated scanning (WAF/CDN detected)';
+        console.log('[Website Scan] Detected active protection: 403 Forbidden');
+      }
+
+      // If the GET succeeded, any HEAD-only protection suspicion should be cleared.
+      if (headProtection) {
+        console.log('[Website Scan] GET succeeded despite HEAD failure; clearing headProtection');
+        headProtection = false;
+      }
+
+      // Capture final URL after redirects
+      try {
+        const finalUrlObj = new URL(response.config.url || urlInfo.final_url);
+        finalUrl = finalUrlObj.toString();
+      } catch {
+        finalUrl = urlInfo.final_url;
+      }
+    } catch (err) {
+      console.error('GET request failed:', err.message, 'Code:', err.code);
+      
+      // Check if it's a timeout (slow/unresponsive server) — treat as limited scan, not error
+      if (err.code === 'ETIMEDOUT' || err.message.includes('timeout')) {
+        activeProtection = true;
+        scanStatus = 'limited';
+        scanLimitReason = 'Server did not respond in time (timeout) or rate-limited';
+        console.log('[Website Scan] Server timeout detected; marking as limited scan');
+      }
+      // Detect active protection signals
+      else if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') ||
+          err.code === 'ERR_TLS_CERT_ALTNAME_INVALID' || err.message.includes('TLS')) {
+        activeProtection = true;
+        scanStatus = 'limited';
+        scanLimitReason = 'Target actively blocks automated scanning (WAF/CDN detected)';
+        console.log('[Website Scan] Detected active protection:', err.code || err.message);
+      }
+      // Check if it's a true DNS/network unreachable error (not timeout)
+      else {
+        const isDnsOrNetworkError = err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || 
+                                    err.message.includes('getaddrinfo');
+        if (isDnsOrNetworkError) {
+          // Return proper unreachable error format
+          return res.status(200).json({
+            ok: false,
+            error: 'UNREACHABLE_HOST',
+            message: 'Domain could not be resolved or is unreachable',
+            context: {
+              original_url: urlInfo.original_url,
+              dns_error: err.code === 'ENOTFOUND' ? 'ENOTFOUND' : 'NETWORK_ERROR'
+            }
+          });
+        }
+      }
+      
+        // If active protection detected, we'll return a limited scan response (continue below)
+        // Otherwise it's a real error
+        if (!activeProtection) {
+          return res.status(502).json({ ok: false, error: 'fetch_failed', message: err.message });
+        }
+      
+        // Create minimal response object for limited scan - no content but mark as limited
+        response = {
+          status: 999,
+          headers: {},
+          data: '',
+          config: { url: urlInfo.final_url }
+        };
     }
 
-    // isHttps: rely on finalUrl's protocol (most robust)
+    // Determine HTTPS status from final URL only
     let isHttps = false;
     try {
       isHttps = new URL(finalUrl).protocol === 'https:';
@@ -121,35 +178,35 @@ router.post('/scan', async (req, res) => {
       isHttps = finalUrl.toLowerCase().startsWith('https://');
     }
 
-    // Normalize headers from axios response.headers (source of truth); keys lowercased
-    const headers = normalizeHeaders(response.headers || {});
-
-    // Analyze headers
-    const analyzed = analyzeHeaders(headers, isHttps);
-
-    // SSL/TLS info: use hostname from final URL for ssl-checker (not full URL)
-    const hostnameForSsl = (() => {
-      try {
-        return new URL(finalUrl).hostname;
-      } catch {
-        // try from requestedFullUrl
-        return new URL(requestedFullUrl).hostname;
-      }
-    })();
-
-    let sslInfo = null;
+    // Extract hostname for SSL check
+    let hostname = '';
     try {
-      // ssl-checker accepts a hostname like 'example.com'
-      // If ssl-checker throws, we continue but mark ssl as null
-      sslInfo = await sslChecker(hostnameForSsl);
-      console.log('SSL Info for', hostnameForSsl, sslInfo && sslInfo.valid ? 'valid' : 'invalid/unknown');
-    } catch (err) {
-      console.error('sslChecker error for', hostnameForSsl, err && err.message ? err.message : err);
-      sslInfo = null; // continue - don't abort the whole scan
+      hostname = new URL(finalUrl).hostname;
+    } catch {
+      hostname = finalUrl.replace(/^https?:\/\//, '').split(/[\/:]/)[0];
     }
 
-    // Google Safe Browsing: only if API key available; use finalUrl (full) for threat entry
-    let reputation = 'unknown';
+    // Step 3: Get SSL info (only if HTTPS)
+    let sslInfo = null;
+    if (isHttps && hostname) {
+      try {
+        sslInfo = await sslChecker(hostname);
+        console.log(`SSL info for ${hostname}:`, sslInfo?.valid ? 'valid' : 'invalid');
+      } catch (err) {
+        console.error('SSL check error:', err.message);
+      }
+    }
+
+    // Normalize/add extra SSL metadata fields for frontend consumption
+    if (sslInfo) {
+      const protocol_version = sslInfo.protocol || sslInfo.tlsVersion || null;
+      const issuer_name = (sslInfo.issuer && (sslInfo.issuer.organizationName || sslInfo.issuer.commonName)) || sslInfo.issuer || null;
+      const wildcard_cert = Array.isArray(sslInfo.altNames) ? sslInfo.altNames.some(n => n.startsWith('*.')) : false;
+      sslInfo = Object.assign({}, sslInfo, { protocol_version, issuer_name, wildcard_cert });
+    }
+
+    // Step 4: Get Google Safe Browsing status
+    let reputation = { status: 'unknown', matches: [] };
     if (googleSafeBrowsingApiKey) {
       try {
         const safeBrowsingPayload = {
@@ -168,47 +225,74 @@ router.post('/scan', async (req, res) => {
           { headers: { 'Content-Type': 'application/json' }, timeout: 8000 }
         );
 
-        if (safeRes.data && safeRes.data.matches) {
-          reputation = 'malicious';
+        if (safeRes.data && safeRes.data.matches && safeRes.data.matches.length > 0) {
+          reputation = { status: 'malicious', matches: safeRes.data.matches };
         } else {
-          reputation = 'safe';
+          reputation = { status: 'safe', matches: [] };
         }
       } catch (err) {
-        console.error('Safe Browsing check failed, continuing scan:', err && err.message ? err.message : err);
-        reputation = 'unknown';
+        console.error('Safe Browsing check failed:', err.message);
       }
-    } else {
-      reputation = 'unknown';
     }
 
-    // Quick info
-    const quick = {
-      status_code: response.status,
-      final_url: finalUrl
+    // Step 5: Analyze headers using 4-state classification
+    const headerAnalysis = analyzeHeaders(response.headers || {}, isHttps);
+    
+    // Step 6: Analyze TLS configuration (if HTTPS)
+    let tlsAnalysis = null;
+    if (isHttps && hostname) {
+      try {
+        tlsAnalysis = await analyzeTLS(hostname, 443);
+      } catch (err) {
+        console.error('TLS analysis error:', err.message);
+      }
+    }
+    
+    // Step 7: Calculate risk score (excludes missing headers)
+    const riskData = {
+      headers: headerAnalysis,
+      tls: tlsAnalysis,
+      cves: { items: [] },
+      network: { results: [] },
+      reputation: reputation
     };
+    const riskScore = calculateRiskScore(riskData);
 
-    // Prepare final headers summary booleans and values you previously used
+    // Return comprehensive scan result
     res.json({
       ok: true,
-      quick,
-      ssl: sslInfo,
-      reputation,
-      headers: {
-        server: analyzed.results.server,
-        https: analyzed.results.https,
-        hsts: !!analyzed.results.hsts,
-        csp: !!analyzed.results.content_security_policy,
-        x_frame_options: !!analyzed.results.x_frame_options,
-        x_content_type_options: !!analyzed.results.x_content_type_options,
-        referrer_policy: !!analyzed.results.referrer_policy,
-        cors: analyzed.results.cors || null
+      scan_status: scanStatus,
+      scan_limit_reason: scanLimitReason,
+      scan_info: {
+        original_url: urlInfo.original_url,
+        final_url: finalUrl,
+        protocol_used: isHttps ? 'https' : 'http',
+        status_code: response.status,
+        redirect_chain: redirectChain
       },
-      advice: analyzed.advice
+      https_status: {
+        secure: isHttps,
+        protocol: isHttps ? 'HTTPS' : 'HTTP',
+        note: isHttps ? 'Secure communication enabled' : 'Not using HTTPS'
+      },
+      ssl: sslInfo,
+      tls: tlsAnalysis,
+      reputation,
+      headers: headerAnalysis,
+      raw_headers: response.headers || {},
+      context: { active_protection: activeProtection },
+      risk_assessment: riskScore,
+      limitations: [
+        'CDN-based sites may rotate headers by region',
+        'Bot protection may alter response headers',
+        'Some headers may vary by request method or User-Agent',
+        'SSL check relies on public certificate databases'
+      ]
     });
 
   } catch (err) {
-    console.error('Website scan error', err && err.message ? err.message : err);
-    res.status(500).json({ ok: false, error: 'internal_error', message: String(err && err.message ? err.message : err) });
+    console.error('Website scan error:', err.message);
+    res.status(500).json({ ok: false, error: 'internal_error', message: err.message });
   }
 });
 

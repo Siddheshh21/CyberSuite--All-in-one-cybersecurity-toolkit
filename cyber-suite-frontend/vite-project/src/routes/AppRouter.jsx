@@ -11,7 +11,7 @@ function Navbar() {
       <div className="space-x-4">
         <Link to="/" className="hover:underline">Home</Link>
         <Link to="/password-analyzer" className="hover:underline">Password Analyzer</Link>
-        <Link to="/vulnerability-scan" className="hover:underline">Vulnerability Scan</Link>
+        <Link to="/vulnerability-scan" className="hover:underline">Security Findings</Link>
         <Link to="/breach-checker" className="hover:underline">Breach Checker</Link>
       </div>
     </nav>

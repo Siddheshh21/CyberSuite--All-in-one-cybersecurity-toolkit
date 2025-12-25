@@ -13,6 +13,7 @@ import SecurityActions from "../components/BreachChecker/SecurityActions";
 import HackerUsesPanel from "../components/BreachChecker/HackerUsesPanel";
 import PasswordSafetyBox from "../components/BreachChecker/PasswordSafetyBox";
 import CyberBackground from "../components/BreachChecker/CyberBackground";
+import BreachDetailsTable from "../components/BreachChecker/BreachDetailsTable";
 // Only import new/needed components as you build them
 
 export default function BreachChecker(){
@@ -93,6 +94,13 @@ export default function BreachChecker(){
                 <div className="mb-6">
                   <BreachRiskMeter found={result.found} />
                 </div>
+                
+                {/* Show detailed breach information when breaches are found */}
+                {result.found && result.breaches && result.breaches.length > 0 && (
+                  <div className="mb-6">
+                    <BreachDetailsTable breaches={result.breaches} />
+                  </div>
+                )}
                 {/* Option to show RadarScanVisualization instead of DataShardsExplosion */}
                 <RadarScanVisualization found={result.found} email={result.email} />
                 <div className="mt-8">

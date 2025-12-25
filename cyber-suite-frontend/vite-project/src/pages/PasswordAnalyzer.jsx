@@ -53,6 +53,24 @@ function computeReuseRisk(localAnaly, hibpCount) {
   return { level, reasons: reasons.length ? reasons : ["No major reuse indicators"] };
 }
 
+// combine character-strength score (0..4) with breach count to compute final rating
+function computeFinalScore(charScore, hibpCount) {
+  if (charScore === null || charScore === undefined) return 0;
+  // If breach info unknown, don't penalize
+  if (hibpCount === null) return Math.max(0, Math.min(4, charScore));
+
+  // Penalty tiers based on breach frequency
+  let penalty = 0;
+  if (hibpCount === 0) penalty = 0;
+  else if (hibpCount <= 9) penalty = 1;
+  else if (hibpCount <= 99) penalty = 2;
+  else if (hibpCount <= 999) penalty = 3;
+  else penalty = 4;
+
+  const combined = charScore - penalty;
+  return Math.max(0, Math.min(4, combined));
+}
+
 export default function PasswordAnalyzer() {
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
@@ -67,6 +85,8 @@ export default function PasswordAnalyzer() {
 
   // Compute reuse risk
   const reuseRisk = computeReuseRisk(local, hibpCount);
+  // final combined score combining character strength and breach penalty
+  const finalScore = computeFinalScore(local?.score ?? 0, hibpCount);
 
   // Auto pick best suggestion
   function autoPickBestSuggestion() {
@@ -287,8 +307,8 @@ export default function PasswordAnalyzer() {
                     <div>
                       <div className="text-sm text-cyan-400">Strength</div>
                       <div className="flex items-center gap-3 mt-1">
-                        <div className="text-lg font-semibold text-cyan-300 drop-shadow-lg">{labels[local.score ?? 0]}</div>
-                        <div className="text-sm text-cyan-200">({local.score ?? 0} / 4)</div>
+                        <div className="text-lg font-semibold text-cyan-300 drop-shadow-lg">{labels[finalScore]}</div>
+                        <div className="text-sm text-cyan-200">({finalScore} / 4)</div>
                       </div>
                       <div className="text-sm text-cyan-200 mt-1">
                         Entropy: {local?.entropyBits ? Math.round(local.entropyBits) + " bits" : "—"}
@@ -297,11 +317,11 @@ export default function PasswordAnalyzer() {
                     {/* Circular Strength Gauge */}
                     <motion.div className="w-24 h-24" initial={false} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200 }}>
                       <CircularProgressbar
-                        value={((local.score ?? 0) + 1) * 20}
+                        value={((finalScore ?? 0) + 1) * 20}
                         maxValue={100}
-                        text={labels[local.score ?? 0]}
+                        text={labels[finalScore ?? 0]}
                         styles={buildStyles({
-                          pathColor: ["#ef4444", "#f59e42", "#fde047", "#34d399", "#22c55e"][local.score ?? 0],
+                          pathColor: ["#ef4444", "#f59e42", "#fde047", "#34d399", "#22c55e"][finalScore ?? 0],
                           textColor: "#0ea5e9",
                           trailColor: "#e0e7ff",
                           backgroundColor: "#0f172a",

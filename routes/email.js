@@ -21,9 +21,9 @@ const crypto = require("crypto");
 const UA = process.env.USER_AGENT || "CyberSuite-EmailChecker";
 const MOCK = String(process.env.MOCK || "0") === "1";
 
-// ---- In-memory cache (email -> { data, ts }) ----
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const cache = new Map();
+// ---- Caching disabled for real-time results ----
+// const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// const cache = new Map();
 
 // ---- Optional local enrichment (only used as fallback; cleaned & deduped) ----
 const localBreachInfo = {
@@ -437,17 +437,21 @@ router.post("/check", async (req, res) => {
     }
     email = String(email).trim().toLowerCase();
 
-    const cached = cache.get(email);
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-      console.log(`Returning cached result for ${hashEmailForLog(email)}`);
-      return res.json(cached.data);
-    }
+    // Caching disabled for real-time results
+    // const cached = cache.get(email);
+    // if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    //   console.log(`Returning cached result for ${hashEmailForLog(email)}`);
+    //   return res.json(cached.data);
+    // }
 
+    console.log(`MOCK variable value: ${MOCK}, MOCK type: ${typeof MOCK}`);
     if (MOCK) {
+      console.log(`MOCK mode enabled for ${hashEmailForLog(email)}`);
       const payload = mockPayload(email);
-      cache.set(email, { data: payload, ts: Date.now() });
+      // cache.set(email, { data: payload, ts: Date.now() });
       return res.json(payload);
     }
+    console.log(`Processing real API call for ${hashEmailForLog(email)}`);
 
     // ---- INTEGRATE ALL XPOSEDORNOT ENDPOINTS ----
     const headers = { "User-Agent": UA };
@@ -460,21 +464,65 @@ router.post("/check", async (req, res) => {
     try {
       // 1. /v1/check-email
       const checkEmailUrl = `https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`;
-      const checkEmailResp = await axios.get(checkEmailUrl, { headers, timeout: 8000 });
+      const checkEmailResp = await axios.get(checkEmailUrl, { headers, timeout: 15000 });
       checkEmailJson = checkEmailResp?.data || {};
+      console.log(`Check-email API response for ${hashEmailForLog(email)}:`, JSON.stringify(checkEmailJson, null, 2));
       // 2. /v1/breach-analytics
       const breachAnalyticsUrl = `https://api.xposedornot.com/v1/breach-analytics?email=${encodeURIComponent(email)}`;
-      const breachAnalyticsResp = await axios.get(breachAnalyticsUrl, { headers, timeout: 8000 });
+      const breachAnalyticsResp = await axios.get(breachAnalyticsUrl, { headers, timeout: 15000 });
       breachAnalyticsJson = breachAnalyticsResp?.data || {};
+      console.log(`Breach-analytics API response for ${hashEmailForLog(email)}:`, JSON.stringify(breachAnalyticsJson, null, 2));
       // 3. /v1/breaches
       const breachesMetaUrl = `https://api.xposedornot.com/v1/breaches`;
-      const breachesMetaResp = await axios.get(breachesMetaUrl, { headers, timeout: 8000 });
+      const breachesMetaResp = await axios.get(breachesMetaUrl, { headers, timeout: 15000 });
       breachesMetaJson = breachesMetaResp?.data || {};
+
+      // Check if email is not found in breaches
+      if (checkEmailJson?.Error === "Not found" || checkEmailJson?.error === "Not found") {
+        // Email not found in any breaches - return safe response
+        const safePayload = {
+          email: email,
+          found: false,
+          count: 0,
+          breaches: [],
+          summary: {
+            exposure_score: 0,
+            exposure_band: "Safe",
+            meter_segments: 0,
+            first_seen_iso: null,
+            last_seen_iso: null,
+            time_since_first_seen: null,
+            time_since_last_seen: null,
+            recency_highlight: null,
+            actions: [
+              "Your email appears safe based on current breach databases",
+              "Use unique passwords for each account",
+              "Enable two-factor authentication where available"
+            ]
+          }
+        };
+        // cache.set(email, { data: safePayload, ts: Date.now() });
+        return res.json(safePayload);
+      }
 
       // Merge breach info from check-email and breach-analytics
       let breachNames = [];
-      if (Array.isArray(checkEmailJson?.breaches)) {
-        breachNames = breachNames.concat(checkEmailJson.breaches.map(b => b.Breach || b.Name || b.Title || b));
+      // Handle check-email response structure variations
+      if (checkEmailJson?.breaches?.value && Array.isArray(checkEmailJson.breaches.value)) {
+        // Structure: { breaches: { value: ["breach1", "breach2"], Count: 2 } }
+        breachNames = breachNames.concat(checkEmailJson.breaches.value);
+      } else if (Array.isArray(checkEmailJson?.breaches)) {
+        if (Array.isArray(checkEmailJson.breaches[0])) {
+          // Structure: { breaches: [["breach1", "breach2", ...]] }
+          breachNames = breachNames.concat(checkEmailJson.breaches[0]);
+        } else {
+          // Structure: { breaches: [{Breach: "name"}, {Name: "name"}, ...] }
+          breachNames = breachNames.concat(checkEmailJson.breaches.map(b => b.Breach || b.Name || b.Title || b));
+        }
+      }
+      // Handle breach-analytics response structure: { ExposedBreaches: { breaches_details: [...] } }
+      if (Array.isArray(breachAnalyticsJson?.ExposedBreaches?.breaches_details)) {
+        breachNames = breachNames.concat(breachAnalyticsJson.ExposedBreaches.breaches_details.map(b => b.breach));
       }
       if (Array.isArray(breachAnalyticsJson?.breachDetails)) {
         breachNames = breachNames.concat(breachAnalyticsJson.breachDetails.map(b => b.Breach || b.Name || b.Title || b));
@@ -485,32 +533,69 @@ router.post("/check", async (req, res) => {
       // Remove duplicates
       breachNames = Array.from(new Set(breachNames.filter(Boolean)));
 
-      // If any breach is found, mark as unsafe and show minimal info if metadata is missing
-      let breachesMetaArr = breachesMetaJson?.breaches || breachesMetaJson?.Records || [];
-      breaches = breachNames.map(name => {
-        let meta = breachesMetaArr.find(b => {
-          return (b.Breach || b.Name || b.Title || b.source || b.Source) === name;
+      // Use actual breach details from breach-analytics API if available
+      let breachesMetaArr = breachesMetaJson?.exposedBreaches || breachesMetaJson?.breaches || breachesMetaJson?.Records || [];
+      
+      // First, try to use real breach details from breach-analytics API
+      if (Array.isArray(breachAnalyticsJson?.ExposedBreaches?.breaches_details)) {
+        console.log(`Raw breach details from API for ${hashEmailForLog(email)}:`, JSON.stringify(breachAnalyticsJson.ExposedBreaches.breaches_details, null, 2));
+        breaches = breachAnalyticsJson.ExposedBreaches.breaches_details.map(breachDetail => {
+          // Try to find better date in metadata
+          let metaDate = null;
+          if (breachesMetaArr.length > 0) {
+             const meta = breachesMetaArr.find(m => 
+                 (m.breachID === breachDetail.breach) || 
+                 (m.BreachID === breachDetail.breach) ||
+                 (m.breachID && breachDetail.breach && m.breachID.toLowerCase() === breachDetail.breach.toLowerCase())
+             );
+             if (meta) {
+                 metaDate = meta.breachedDate || meta.BreachDate;
+                 console.log(`Found metadata for ${breachDetail.breach}: date=${metaDate}`);
+             }
+          }
+
+          const rawDate = metaDate || breachDetail.xposed_date || breachDetail.added || breachDetail.BreachDate || breachDetail.date;
+          console.log(`Processing breach ${breachDetail.breach}: raw date = ${rawDate}`);
+          return {
+            name: breachDetail.breach,
+            domain: breachDetail.domain || null,
+            breach_date_iso: parseDateToISO(rawDate?.toString()),
+            description: breachDetail.details || "Details unavailable",
+            data_classes: breachDetail.xposed_data ? breachDetail.xposed_data.split(";").map(s => s.trim()).filter(Boolean) : [],
+            verified: breachDetail.verified === "Yes" || breachDetail.verified === true,
+            url: breachDetail.references || null,
+            severity: severityFromDataClasses(breachDetail.xposed_data ? breachDetail.xposed_data.split(";").map(s => s.trim()).filter(Boolean) : []),
+          };
         });
-        if (!meta) {
-          // fallback: try case-insensitive match
-          meta = breachesMetaArr.find(b => {
-            return ((b.Breach || b.Name || b.Title || b.source || b.Source || "").toLowerCase() === String(name).toLowerCase());
+      } else {
+        // Fallback to metadata lookup
+        breaches = breachNames.map(name => {
+          let meta = breachesMetaArr.find(b => {
+            return (b.breachID || b.Breach || b.Name || b.Title || b.source || b.Source) === name;
           });
-        }
-        // fallback: minimal info
-        if (!meta) meta = { name, description: "Details unavailable", data_classes: [], domain: null };
-        // Normalize
-        return {
-          name: meta.Breach || meta.Name || meta.Title || meta.source || meta.Source || name,
-          domain: meta.Domain || meta.domain || null,
-          breach_date_iso: parseDateToISO(meta.BreachDate || meta.breachDate || meta.Date || meta.date || meta.AddedDate || meta.ModifiedDate),
-          description: meta.Description || meta.description || "Details unavailable",
-          data_classes: meta.DataClasses || meta.dataClasses || meta.dataCompromised || meta.data || meta.CompromisedData || [],
-          verified: (typeof meta.Verified === "boolean" ? meta.Verified : (typeof meta.verified === "boolean" ? meta.verified : undefined)),
-          url: meta.Reference || meta.reference || meta.Url || meta.url || null,
-          severity: severityFromDataClasses(meta.DataClasses || meta.dataClasses || meta.dataCompromised || meta.data || meta.CompromisedData || []),
-        };
-      });
+          if (!meta) {
+            // fallback: try case-insensitive match
+            meta = breachesMetaArr.find(b => {
+              return ((b.breachID || b.Breach || b.Name || b.Title || b.source || b.Source || "").toLowerCase() === String(name).toLowerCase());
+            });
+          }
+          // fallback: minimal info
+          if (!meta) meta = { name, description: "Details unavailable", data_classes: [], domain: null };
+          // Normalize
+          const rawDate = meta.breachedDate || meta.BreachDate || meta.breachDate || meta.Date || meta.date || meta.AddedDate || meta.ModifiedDate;
+          console.log(`Processing metadata for ${name}: raw date = ${rawDate}, available fields = ${Object.keys(meta).join(', ')}`);
+          return {
+            name: meta.breachID || meta.Breach || meta.Name || meta.Title || meta.source || meta.Source || name,
+            domain: meta.Domain || meta.domain || null,
+            breach_date_iso: parseDateToISO(rawDate?.toString()),
+            description: meta.exposureDescription || meta.Description || meta.description || "Details unavailable",
+            data_classes: meta.exposedData || meta.DataClasses || meta.dataClasses || meta.dataCompromised || meta.data || meta.CompromisedData || [],
+            verified: (typeof meta.Verified === "boolean" ? meta.Verified : (typeof meta.verified === "boolean" ? meta.verified : undefined)),
+            url: meta.referenceURL || meta.Reference || meta.reference || meta.Url || meta.url || null,
+            severity: severityFromDataClasses(meta.exposedData || meta.DataClasses || meta.dataClasses || meta.dataCompromised || meta.data || meta.CompromisedData || []),
+          };
+        });
+      }
 
       // Final safeguard: drop ultra-empty rows to avoid "Unknown spam"
       breaches = breaches.filter(b => {
@@ -536,9 +621,31 @@ router.post("/check", async (req, res) => {
       }
     } catch (e) {
       console.error("XposedOrNot API request failed:", e.message);
-      const payload = mockPayload(email);
-      cache.set(email, { data: payload, ts: Date.now() });
-      return res.json(payload);
+      // Return "not found" response instead of mock data
+      const notFoundPayload = {
+        email: email,
+        found: false,
+        count: 0,
+        breaches: [],
+        summary: {
+          exposure_score: 0,
+          exposure_band: "Safe",
+          meter_segments: 0,
+          first_seen_iso: null,
+          last_seen_iso: null,
+          time_since_first_seen: null,
+          time_since_last_seen: null,
+          recency_highlight: null,
+          actions: [
+            "Your email appears safe based on current breach databases",
+            "Continue practicing good security hygiene",
+            "Use unique passwords for each account",
+            "Enable two-factor authentication where available"
+          ]
+        }
+      };
+      // cache.set(email, { data: notFoundPayload, ts: Date.now() });
+      return res.json(notFoundPayload);
     }
 
     // Ensure breach details are always shown
@@ -566,13 +673,29 @@ router.post("/check", async (req, res) => {
       };
     });
 
-    // Minimal response for modern frontend, keep all 3 API calls
+    // Return both breach details and actions for comprehensive display
+    const exposure_score = computeExposureScore(breaches);
+    const first_seen_iso = breaches.map(b => b.breach_date_iso).filter(Boolean).sort()[0] || null;
+    const last_seen_iso = breaches.map(b => b.breach_date_iso).filter(Boolean).sort().slice(-1)[0] || null;
+    
     const payload = {
       email,
       found,
-      actions: buildActions(breaches)
+      count: breaches.length,
+      breaches: breaches,
+      summary: {
+        exposure_score,
+        exposure_band: exposureBand(exposure_score),
+        meter_segments: Math.min(5, Math.max(0, Math.ceil(exposure_score / 20))),
+        first_seen_iso,
+        last_seen_iso,
+        time_since_first_seen: timeSinceLabel(first_seen_iso),
+        time_since_last_seen: timeSinceLabel(last_seen_iso),
+        recency_highlight: recencyHighlight(last_seen_iso),
+        actions: buildActions(breaches)
+      }
     };
-    cache.set(email, { data: payload, ts: Date.now() });
+    // cache.set(email, { data: payload, ts: Date.now() });
     return res.json(payload);
   } catch (err) {
     console.error(

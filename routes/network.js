@@ -112,12 +112,13 @@ function attemptConnection(port, host, timeoutMs = CONNECT_TIMEOUT_MS, hostnameF
       }
     }, timeoutMs + 500);
 
+    let bannerSample = null;
     const finish = (status) => {
       if (settled) return;
       settled = true;
       clearTimeout(fallbackTimer);
       try { if (socket) socket.destroy(); } catch {}
-      resolve({ port, status });
+      resolve({ port, status, banner: bannerSample });
     };
 
     // Helper: send HEAD and expect HTTP/ response (used for 80/8080 and over TLS for 443)
@@ -129,7 +130,8 @@ function attemptConnection(port, host, timeoutMs = CONNECT_TIMEOUT_MS, hostnameF
       const onData = (data) => {
         if (got) return;
         got = true;
-        const s = data.toString();
+        try { bannerSample = data.toString('utf8', 0, Math.min(data.length, 1024)).trim(); } catch(e){}
+        const s = String(bannerSample || '');
         if (s.startsWith('HTTP/')) finish('open');
         else finish('closed');
       };
@@ -189,7 +191,8 @@ function attemptConnection(port, host, timeoutMs = CONNECT_TIMEOUT_MS, hostnameF
       return;
     }
 
-    // Non-HTTP ports: require banner OR survive a short grace window after connect
+    // Non-HTTP ports: require a banner/data reply within the timeout to mark open.
+    // This is stricter and avoids false-positives caused by middleboxes or transient accepts.
     const s = new net.Socket();
     socket = s;
     s.setNoDelay(true);
@@ -197,29 +200,20 @@ function attemptConnection(port, host, timeoutMs = CONNECT_TIMEOUT_MS, hostnameF
     s.setTimeout(timeoutMs);
 
     let gotBanner = false;
-    let closedBeforeGrace = false;
 
-    // If service sends data (banner), that's a strong indicator it's open
     s.once('data', (buf) => {
       gotBanner = true;
+      try {
+        bannerSample = buf.toString('utf8', 0, Math.min(buf.length, 1024)).trim();
+        console.log(`Network scanner: banner on ${host}:${port} ->`, bannerSample.replace(/\s+/g, ' '));
+      } catch (e) { bannerSample = null; }
       finish('open');
     });
 
     s.once('connect', () => {
-      // short grace window to detect immediate close-then-reset behavior by middleboxes
-      const graceMs = 200;
-      const graceTimer = setTimeout(() => {
-        if (!settled && !closedBeforeGrace) {
-          // no immediate close and no banner -> consider open
-          finish('open');
-        }
-      }, graceMs);
-
-      // If connection closes before grace timer and we didn't get banner, treat as closed
+      // Wait for data until the socket timeout; if no banner arrives, treat as closed.
       s.once('close', () => {
-        clearTimeout(graceTimer);
         if (!gotBanner && !settled) {
-          closedBeforeGrace = true;
           finish('closed');
         }
       });

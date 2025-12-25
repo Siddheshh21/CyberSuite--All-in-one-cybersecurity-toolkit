@@ -18,7 +18,7 @@ const Navbar = () => {
   const navItems = [
     { path: '/', label: 'Home' },
     { path: '/password-analyzer', label: 'Password Analyzer' },
-    { path: '/vulnerability-scan', label: 'Vulnerability Scan' },
+    { path: '/vulnerability-scan', label: 'Security Findings' },
     { path: '/breach-checker', label: 'Breach Checker' }
   ];
 

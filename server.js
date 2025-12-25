@@ -2,8 +2,11 @@
 require('dotenv').config();
 
 // --- Log active API integrations you use ---
-console.log("OTX API Key:", process.env.OTX_API_KEY || "Not Set");
-console.log("Google Safe Browsing API Key:", process.env.GOOGLE_SAFE_BROWSING_API_KEY || "Not Set");
+// API Key status logging (without exposing actual keys)
+const otxKeyStatus = process.env.OTX_API_KEY ? 'Configured' : 'Not Set';
+const googleKeyStatus = process.env.GOOGLE_SAFE_BROWSING_API_KEY ? 'Configured' : 'Not Set';
+console.log("OTX API Key Status:", otxKeyStatus);
+console.log("Google Safe Browsing API Key Status:", googleKeyStatus);
 
 const express = require('express');
 const cors = require('cors');
@@ -18,8 +21,10 @@ app.use(cors({
     'https://cybersuite-all-in-one-cybersecurity-toolkit-production.up.railway.app',
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:5174',
     'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173'
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],

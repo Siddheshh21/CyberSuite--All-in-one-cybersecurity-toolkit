@@ -50,7 +50,7 @@ export default function Home() {
           </Suspense>
         </h2>
         <p className="mt-4 text-base sm:text-lg text-[#10ff8d]/90 opacity-0 animate-fadeIn" style={{ animationDelay: '4s', animationFillMode: 'forwards' }}>
-          Password Analyzer, Vulnerability Scanner, Email Breach Checker, and more.
+          Password Analyzer, Security Findings, Email Breach Checker, and more.
         </p>
 
         {/* Call to Action Buttons */}
@@ -65,7 +65,7 @@ export default function Home() {
             to="/vulnerability-scan"
             className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-[#0F2027] to-[#2C5364] text-white rounded-lg font-semibold shadow-lg hover:scale-105 transition-all duration-300 border border-[#10ff8d]/30 hover:border-[#10ff8d]/60"
           >
-            Run Vulnerability Scan
+            Run Security Findings
           </Link>
           <Link
             to="/breach-checker"
@@ -80,7 +80,7 @@ export default function Home() {
       <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 max-w-6xl px-4 sm:px-6">
         {[
           { icon: <FaLock size={40} />, title: "Password Analyzer", desc: "Check your password strength and resistance against cracking attempts." },
-          { icon: <FaBug size={40} />, title: "Vulnerability Scan", desc: "Scan websites for known vulnerabilities and misconfigurations." },
+          { icon: <FaBug size={40} />, title: "Security Findings", desc: "Scan websites for known issues and misconfigurations." },
           { icon: <FaDatabase size={40} />, title: "CVE Lookup", desc: "Search for Common Vulnerabilities and Exposures with detailed reports." },
           { icon: <FaEnvelope size={40} />, title: "Breach Checker", desc: "Find if your email or data has been part of a security breach." },
           { icon: <FaShieldAlt size={40} />, title: "Network Checks", desc: "Run security checks for your network setup and configurations." },
